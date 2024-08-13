@@ -48,8 +48,11 @@ export class Peer {
     async consume(rtpCapabilities: types.RtpCapabilities, transportId: string, producerId: string) {
         const consTransport: types.Transport = this.transports.get(transportId);
 
-
-        const consumer = await consTransport.consume({ producerId, rtpCapabilities, paused: false });
+        console.log("Consume called in peer for prod", producerId, "on transport: ",transportId);
+        
+        const consumer:types.Consumer = await consTransport.consume({ producerId, rtpCapabilities, paused: true });
+        
+        
         this.consumerTransports.set(consumer.id, consumer);
         const params = {
             id: consumer.id,
@@ -58,8 +61,10 @@ export class Peer {
             rtpParameters: consumer.rtpParameters,
             type: consumer.type,
             name: this.name,
-            isPuased: consumer.paused
+    
         }
+        // console.log("Params for consuming", params.id, params.producerId,params.kind, params.type, params.name, params.rtpParameters);
+        
         if (consumer.type === 'simulcast') {
             await consumer.setPreferredLayers({
                 spatialLayer: 2,

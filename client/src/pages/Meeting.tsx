@@ -79,6 +79,8 @@ function Meeting() {
     socket?.emit("getRouterRPCapabilities", (callback: any) => {
       if (callback.success) {
         setRouterRTPCapabilities(callback.params);
+        console.log("getRouterRTP value: ",callback.params);
+        
       }
       else {
         alert(`cannot get RTP capabilities ${callback.message}`);
@@ -90,13 +92,10 @@ function Meeting() {
 
   //---------------------get list of all producers in the room--------------------
   async function getAllProducers() {
-
-    console.log("Get all producers called");
-
     socket?.emit('get-producers', (callback: any) => {
       if (callback.success) {
         setAllProducers(callback.producersList);
-        console.log("All producers: ", callback.producersList);
+        console.log("All producers Values: ", callback.producersList);
       }
     })
 
@@ -119,7 +118,7 @@ function Meeting() {
       await device.load({
         routerRtpCapabilities: params
       });
-      console.log("Loaded device: ", device);
+      console.log("Device Created and Loaded: ", device);
 
 
     } catch (error) {
@@ -137,8 +136,9 @@ function Meeting() {
       localRef.current.play();
     }
     const track = stream.getVideoTracks()[0];
+    
     setMediaParams(c => ({ ...c, track: track }));
-    console.log("params has been set: ", localMediaParams);
+  
 
   }
 
@@ -162,6 +162,7 @@ function Meeting() {
           dtlsParameters: transportParams.dtlsParameters
         });
         setProducerTransport(prodTransport);
+        
 
 
         prodTransport?.on('connect', (params, callback, errback) => {
@@ -201,6 +202,9 @@ function Meeting() {
 
   useEffect(() => {
     if (producerTransport && localMediaParams.hasOwnProperty('track')) {
+      console.log("Producer created: ",producerTransport);
+      console.log("Media param:, ",localMediaParams);
+      
       produceMedia();
     }
 
@@ -211,8 +215,9 @@ function Meeting() {
     const producer = await producerTransport?.produce(localMediaParams);
     // console.log(producer);
     if(!producer) return;
-    console.log("producer id in client producer:", producer.id);
+   
 
+    
 
     producer?.on('trackended', () => {
       console.log("track ended");
@@ -230,22 +235,16 @@ function Meeting() {
     if (allProducers) {
 
       allProducers.forEach(async (producer) => {
-        createConsumerTransport()
-          .then((newRecvTransport: any) => {
-
-            console.log("Recv Transport", newRecvTransport);
-            if (!newRecvTransport) return;
-            consumeProducer(newRecvTransport, producer);
-          })
+        createConsumerTransport(producer);
       })
 
     }
 
   }, [allProducers])
 
-  async function createConsumerTransport() {
-    return new Promise((resolve, reject) => {
 
+  async function createConsumerTransport(producer:string) {
+   
       socket?.emit('createWebRTCTransport', async (callback: any) => {
         if (callback.success) {
           const transportParams: types.TransportOptions = callback.params;
@@ -256,37 +255,33 @@ function Meeting() {
             dtlsParameters: transportParams.dtlsParameters
           });
           consumerTransports.set(consTransport?.id, consTransport);
-          console.log("consumer tanpsort created :", consTransport);
+          console.log("Consumer transport created:", consTransport);
+          if(!consTransport)return;
 
-          if (!consTransport) return;
 
           consTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
             try {
-              console.log("on connect called for recv trans");
+              console.log("Consumer transport connect called");
               socket.emit('connect-transport', { dtlsParameters }, { transportId: consTransport.id });
               callback();
-
             } catch (error: any) {
-              errback(error)
-
+              errback(error);
+              console.error("Error connecting consumer transport:", error);
             }
           });
-
-          resolve(consTransport)
+  
+          consumeProducer(consTransport, producer);
+        } else {
+          console.error("Cannot create consumer transport:", callback.message);
         }
-        else {
-          reject();
-          alert("Cannot create consumer trasnport");
-        }
-      })
-
-    })
-
+    });
   }
+  
 
 
   function consumeProducer(transportForConsumption: types.Transport, producer: string) {
-    console.log("consume Producer called", transportForConsumption.id);
+    
+    console.log("Consumer called for producer: ",producer, "device rtp: ",device?.rtpCapabilities);
     
     socket?.emit('consume', 
       { rtpCapabilities: device?.rtpCapabilities, 
@@ -297,34 +292,42 @@ function Meeting() {
         if (callback.success) {
           const params: types.ConsumerOptions = callback.params;
           if (!params) return;
-          console.log("Params in meeting received:", params);
-          const consumer = await transportForConsumption.consume({
-            id: params.id,
-            rtpParameters: params.rtpParameters,
-            kind: params.kind,
-            producerId: params.producerId
-
-          });
-          const track = consumer.track;
+          console.log(params);
+          try {
+            
+            const consumer = await transportForConsumption.consume({
+              id: params.id,
+              rtpParameters: params.rtpParameters,
+              kind: params.kind,
+              producerId: params.producerId
+              
+            });
+          console.log("consumer", JSON.stringify(consumer));
+          
+          const {track} = consumer;
           console.log("Inbound track: ",track);
+          
+          
           
           // const refId = remoteVideoBox.length;
           // remoteVideoRefs.current[refId] = React.createRef<HTMLVideoElement>()
           // const name = callback.params.name;
           // setRemoteVideoBox(prev => ([...prev, <VideoBox forwardedRef={remoteVideoRefs.current[refId]} name={name} key={refId}/>]));
-         
+          
           // if (remoteVideoRefs.current[refId] && remoteVideoRefs.current[refId].current) {
           //   console.log("track: ",track);
           //   (remoteVideoRefs.current[refId].current as HTMLVideoElement).srcObject = new MediaStream([track]);
           //   (remoteVideoRefs.current[refId].current as HTMLVideoElement).play();
           // }
-
+          
           if(remoteRef.current){
             remoteRef.current.srcObject = new MediaStream([track]);
             remoteRef.current.play();
           }
-
-          console.log("transport id:", params.id);
+        } catch (error) {
+          console.error("Error consuming producer:", error);
+        }
+          
           
           socket.emit('consumer-resume',{transportId: params.id}, (callback:any)=>{
            console.log(callback);

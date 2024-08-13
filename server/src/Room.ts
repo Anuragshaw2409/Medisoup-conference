@@ -55,13 +55,9 @@ export class Room{
               enableUdp: true,
               enableTcp: true,
               preferUdp: true,
-              initialAvailableOutgoingBitrate: 1000000
+            //   initialAvailableOutgoingBitrate: 1000000
         })
-        try {
-            await transport?.setMaxIncomingBitrate(1500000);
-        } catch (error) {
-            
-        }
+       
 
         this.PeerList.get(socketId).addTransport(transport);
         const params = {
@@ -103,7 +99,8 @@ export class Room{
             console.log("Cannot consume");
             return ;
 }
-        const params = this.PeerList.get(socketId).consume(rtpCapabilities,transportId, producerId);
+        const params =await this.PeerList.get(socketId).consume(rtpCapabilities,transportId, producerId);
+       console.log("Room params output", params);
        
         return (params);
 

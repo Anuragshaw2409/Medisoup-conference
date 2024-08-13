@@ -139,6 +139,7 @@ io.on('connection', (socket: CustomSocket) => {
         if(!socket.roomId || !roomList.get(socket.roomId).hasPeer(socket.id) || !roomList.has(socket.roomId))
             return callback({success:false, message:"Room does not exists or peer not connected to room"});
         
+        console.log("Produce for ", transportId);
         
         const producer  =await roomList.get(socket.roomId).produce(rtpParameter, kind, transportId, socket.id);
         callback({
@@ -156,6 +157,7 @@ io.on('connection', (socket: CustomSocket) => {
             return callback({ success: false, message: "Room does not exist or peer not connected to room" });
         }
         
+        console.log("Consume called for producer",producerId, "On transport: ",transportId);
         
         const params =await roomList.get(socket.roomId).consume(rtpCapabilities,producerId,transportId, socket.id);
         
