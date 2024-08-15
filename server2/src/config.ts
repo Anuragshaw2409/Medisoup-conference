@@ -26,7 +26,7 @@ const getLocalIp = () => {
     numWorkers: Object.keys(os.cpus()).length,
     worker: {
       rtcMinPort: 2000 ,
-      rtcMaxPort: 2020,
+      rtcMaxPort: 2200,
       logLevel: 'warn' as types.WorkerLogLevel,
       logTags: [
         'info',
