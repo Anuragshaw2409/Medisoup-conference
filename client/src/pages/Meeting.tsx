@@ -11,18 +11,17 @@ import { params } from "./config";
 function Meeting() {
   const { roomid, name } = useParams();
   const localRef = useRef<HTMLVideoElement | null>(null);
-  const remoteRef = useRef<HTMLVideoElement | null>(null);
   const [socket, setSocket] = useState<Socket>();
   const [producerTransport, setProducerTransport] = useState<types.Transport>();
   const consumerTransports = new Map();
+  const [producerWithConsumer, setProducerWithConsumer] = useState<string[]>([])
   const [allProducers, setAllProducers] = useState<string[] | null>(null);
   const [device, setDevice] = useState<types.Device | null>(null);
   const [roomId, setRoomId] = useState<string | undefined>(roomid);
   const [routerRTPCapabilities, setRouterRTPCapabilities] = useState<types.RtpCapabilities>();
   const [isConnected, setIsConnected] = useState(false);
   const [localMediaParams, setMediaParams] = useState(params);
-  const [remoteVideoBox, setRemoteVideoBox] = useState<JSX.Element[]>([]);
-  const remoteVideoRefs = useRef<React.RefObject<HTMLVideoElement>[]>([]);
+  const remoteVideoContainer = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
 
 
@@ -65,6 +64,24 @@ function Meeting() {
   // ---------------------------connected to a room-------------------
 
 
+  socket?.on('new-producer', ({producerId})=>{
+    if(!producerId)return;
+
+    console.log("new producer",producerId);
+    
+
+    if(allProducers?.includes(producerId)) return;
+
+    else{
+      if(allProducers)
+        setAllProducers([...allProducers,producerId]);
+      else
+        setAllProducers([producerId]);
+    
+    }
+
+  })
+
   useEffect(() => {
     if (isConnected) {
       getRTPCapabilityPromise();
@@ -78,8 +95,8 @@ function Meeting() {
 
     socket?.emit("getRouterRPCapabilities", (callback: any) => {
       if (callback.success) {
-        setRouterRTPCapabilities(callback.params);
-        console.log("getRouterRTP value: ",callback.params);
+        setRouterRTPCapabilities(callback.rtpCapabilities);
+        console.log("getRouterRTP value: ",callback.rtpCapabilities);
         
       }
       else {
@@ -94,8 +111,8 @@ function Meeting() {
   async function getAllProducers() {
     socket?.emit('get-producers', (callback: any) => {
       if (callback.success) {
-        setAllProducers(callback.producersList);
-        console.log("All producers Values: ", callback.producersList);
+        setAllProducers(callback.producers);
+        console.log("All producers Values: ", callback.producers);
       }
     })
 
@@ -130,14 +147,20 @@ function Meeting() {
   //--------------------get media device of user---------------------------
   async function getUserMedia() {
 
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    if (localRef.current) {
-      localRef.current.srcObject = stream;
-      localRef.current.play();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      if (localRef.current) {
+        localRef.current.srcObject = stream;
+        localRef.current.play();
+      }
+      const track = stream.getVideoTracks()[0];
+      
+      setMediaParams(c => ({ ...c, track: track }));
+      
+    } catch (error) {
+      alert(error);
+      
     }
-    const track = stream.getVideoTracks()[0];
-    
-    setMediaParams(c => ({ ...c, track: track }));
   
 
   }
@@ -168,9 +191,12 @@ function Meeting() {
         prodTransport?.on('connect', (params, callback, errback) => {
           try {
 
-            socket.emit('connect-transport', {
+            socket.emit('connect-peer-transport', {
               transportId: prodTransport.id,
               dtlsParameters: params.dtlsParameters
+            },(callback:any)=>{
+              console.log("PRoducer connected", callback);
+              
             });
             callback();
 
@@ -185,10 +211,10 @@ function Meeting() {
 
           try {
             socket.emit('produce', {
-              rtpParameter: rtpParameters,
+              rtpParameters: rtpParameters,
               kind,
               transportId: prodTransport.id
-            }, (({ id }: { id: any }) => { callback(id); console.log(id); }))
+            }, (({ producerId }: { producerId: any }) => { callback(producerId); console.log(producerId); }))
           } catch (error: any) {
             alert(error);
             errback(error)
@@ -244,6 +270,9 @@ function Meeting() {
 
 
   async function createConsumerTransport(producer:string) {
+
+    if(producerWithConsumer.includes(producer))
+      return;
    
       socket?.emit('createWebRTCTransport', async (callback: any) => {
         if (callback.success) {
@@ -262,7 +291,9 @@ function Meeting() {
           consTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
             try {
               console.log("Consumer transport connect called");
-              socket.emit('connect-transport', { dtlsParameters }, { transportId: consTransport.id });
+              socket.emit('connect-peer-transport', { dtlsParameters,transportId: consTransport.id },(callback:any)=>{
+                console.log("consumer connected",callback);
+              });
               callback();
             } catch (error: any) {
               errback(error);
@@ -292,7 +323,8 @@ function Meeting() {
         if (callback.success) {
           const params: types.ConsumerOptions = callback.params;
           if (!params) return;
-          console.log(params);
+          // const name = callback.name;
+          console.log("params for calling consumer", params);
           try {
             
             const consumer = await transportForConsumption.consume({
@@ -302,27 +334,19 @@ function Meeting() {
               producerId: params.producerId
               
             });
-          console.log("consumer", JSON.stringify(consumer));
+            
+            setProducerWithConsumer(c=>[...c,consumer.producerId]);
+
           
           const {track} = consumer;
-          console.log("Inbound track: ",track);
-          
-          
-          
-          // const refId = remoteVideoBox.length;
-          // remoteVideoRefs.current[refId] = React.createRef<HTMLVideoElement>()
-          // const name = callback.params.name;
-          // setRemoteVideoBox(prev => ([...prev, <VideoBox forwardedRef={remoteVideoRefs.current[refId]} name={name} key={refId}/>]));
-          
-          // if (remoteVideoRefs.current[refId] && remoteVideoRefs.current[refId].current) {
-          //   console.log("track: ",track);
-          //   (remoteVideoRefs.current[refId].current as HTMLVideoElement).srcObject = new MediaStream([track]);
-          //   (remoteVideoRefs.current[refId].current as HTMLVideoElement).play();
-          // }
-          
-          if(remoteRef.current){
-            remoteRef.current.srcObject = new MediaStream([track]);
-            remoteRef.current.play();
+          if(remoteVideoContainer.current){
+            const newVideoElement = document.createElement('video');
+            newVideoElement.srcObject = new MediaStream([track]);
+            newVideoElement.style.height='110px';
+            remoteVideoContainer.current.appendChild(newVideoElement);
+            newVideoElement.play();
+
+
           }
         } catch (error) {
           console.error("Error consuming producer:", error);
@@ -367,10 +391,8 @@ function Meeting() {
         </div>
 
         {/* Other Videos */}
-        <div className="OtherVideos w-full  m-2 overflow-y-scroll flex flex-wrap gap-2 items-start">
-          {/* <VideoBox forwardedRef={localRef} name={"You"}/> */}
-          {/* {remoteVideoBox} */}
-          <VideoBox forwardedRef={remoteRef} name={"remote"}/>
+        <div className="OtherVideos w-full  m-2 overflow-y-scroll flex flex-wrap gap-2 items-start" ref={remoteVideoContainer}>
+       
 
 
         </div>

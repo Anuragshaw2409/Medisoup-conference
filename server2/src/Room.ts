@@ -79,7 +79,7 @@ export class Room {
             const success = this.peerList.get(socketId).addTransport(transport);
             if (success) {
                 return ({
-                    success: true, message: "Producer Transport added", params: {
+                    success: true, message: "transport created", params: {
                         id: transport.id,
                         iceParameters: transport.iceParameters,
                         iceCandidates: transport.iceCandidates,

@@ -100,6 +100,7 @@ io.on('connection',(socket: CustomSocket)=>{
            return callback({success:false, message:"You are not in a room"});
         }
         const rtpCapabilities = roomList.get(socket.roomId).getRtpCapbailities();
+
         callback({success:true, rtpCapabilities});
     });
 
@@ -172,6 +173,8 @@ io.on('connection',(socket: CustomSocket)=>{
         if(!socket.roomId || !roomList.has(socket.roomId)){
             return callback({success:false, message:"You are not in a room"});
         }
+        console.log("Received requst for connection rtp",rtpCapabilities," producer",producerId," transport",transportId);
+        
 
         const response = await roomList.get(socket.roomId).consume(transportId, rtpCapabilities, producerId, socket.id);
         console.log(response);
