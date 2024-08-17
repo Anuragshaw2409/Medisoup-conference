@@ -182,6 +182,29 @@ export class Room {
     }
 
 
+    leave(socketId:string){
+        this.peerList.forEach((peer) => {
+            const producers = peer.producers;
+            producers.forEach((producer:types.Producer)=>{
+                this.closeProducer(socketId, producer.id);
+            });
+
+        });
+
+        this.peerList.forEach((peer)=>{
+            const transports = peer.transports;
+            transports.forEach((transport:types.Transport)=>{
+                transport.close();
+            });
+        });
+
+        this.peerList.set(socketId, null);
+        this.peerList.delete(socketId);
+        
+
+    }
+
+
     webRtcTransport_options = {
         listenIps: [
             {

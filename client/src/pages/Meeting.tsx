@@ -28,8 +28,7 @@ function Meeting() {
   const [consumers, setConsumers] = useState<Map<string, types.Consumer>>(new Map());
   const [consumerTransports, setConsumerTransports] = useState<Map<string, types.Transport>>(new Map());
   const [producerTransports, setProducerTransports] = useState<Map<string, types.Transport>>(new Map());
-  
-  // const consumerTransports = new Map();
+
 
   const [producerWithConsumer, setProducerWithConsumer] = useState<string[]>([])
   const [routerRTPCapabilities, setRouterRTPCapabilities] = useState<types.RtpCapabilities>();
@@ -644,6 +643,35 @@ function Meeting() {
   }
 
 
+  function leaveCall(){
+    socket?.emit('leave');
+    setRoomId("");
+    setDevice(null);
+    setAllProducers([]);
+    videoProducer?.close();
+    setVideoProducer(null);
+    audioproducer?.close();
+    setAudioProducer(null);
+    screenProducer?.close();
+    setScreenProducer(null);
+    setProducerIdWithKind(new Map());
+    consumerTransports.forEach((transport)=>{
+      transport.close();
+    });
+    setConsumerTransports(new Map());
+    setConsumers(new Map());
+    producerTransports.forEach((transport)=>{
+      transport.close();
+    })
+    setProducerTransports(new Map());
+    setProducerWithConsumer([]);
+    setAudioTrack(null);
+    setvideoTrack(null);
+    setscreenTrack(null);
+
+    navigate('/');
+    
+  }
 
 
 
@@ -684,7 +712,7 @@ function Meeting() {
         <button className="py-2 px-4 border-2 border-red-500 text-red-500 rounded-lg" onClick={handleVideoButton} ref={videoRef}>
           Start video
         </button>
-        <button className="py-2 px-4 border-2 border-red-500 text-red-500 rounded-lg">
+        <button className="py-2 px-4 border-2 border-red-500 text-red-500 rounded-lg" onClick={leaveCall}>
           End Call
         </button>
         <button className="py-2 px-4 border-2 border-red-500 text-red-500 rounded-lg" onClick={handleScreenButton} ref={screenref}>
@@ -696,17 +724,6 @@ function Meeting() {
 }
 
 export default Meeting;
-
-
-
-
-
-
-
-
-
-
-
 
 
 function VideoBox({ forwardedRef, name }: { forwardedRef: React.RefObject<HTMLVideoElement>, name: string }) {
