@@ -173,6 +173,8 @@ io.on('connection',(socket: CustomSocket)=>{
         if(!socket.roomId || !roomList.has(socket.roomId)){
             return callback({success:false, message:"You are not in a room"});
         }
+
+        
         console.log("Received requst for connection rtp",rtpCapabilities," producer",producerId," transport",transportId);
         
 
@@ -184,6 +186,13 @@ io.on('connection',(socket: CustomSocket)=>{
 
     });
 
+    socket.on('close-producer',({producerId})=>{
+        if(!socket.roomId || !roomList.has(socket.roomId)){
+            return;
+        }
+        roomList.get(socket.roomId).closeProducer(socket.id, producerId);
+
+    })
 
 
 

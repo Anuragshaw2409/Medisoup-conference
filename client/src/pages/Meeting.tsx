@@ -24,8 +24,12 @@ function Meeting() {
   const [audioproducer, setAudioProducer] = useState<types.Producer | null>(null);
   const [screenProducer, setScreenProducer] = useState<types.Producer | null>(null);
 
+  const [producerIdWithKind, setProducerIdWithKind] = useState<Map<string, string>>(new Map());
+  const [consumers, setConsumers] = useState<Map<string, types.Consumer>>(new Map());
+  const [consumerTransports, setConsumerTransports] = useState<Map<string, types.Transport>>(new Map());
+  
+  // const consumerTransports = new Map();
 
-  const consumerTransports = new Map();
   const [producerWithConsumer, setProducerWithConsumer] = useState<string[]>([])
   const [routerRTPCapabilities, setRouterRTPCapabilities] = useState<types.RtpCapabilities>();
   const remoteVideoContainer = useRef<HTMLDivElement | null>(null);
@@ -95,7 +99,40 @@ function Meeting() {
 
     }
 
+  });
+
+  socket?.on('close-consumer',({producerId})=>{
+    console.log("Close consumer event fired");
+    
+    setProducerWithConsumer(c=>{
+      return c.filter((id)=>id!=producerId);
+    });
+
+    removeElements(producerId);
+
   })
+
+  function removeElements(producerId:string){
+    const consumer = consumers.get(producerId);
+    const consumerTrans = consumerTransports.get(producerId);
+    consumerTrans?.close();
+    consumer?.close();
+
+    setConsumerTransports(prev=>{
+      const newMap = new Map(prev);
+      newMap.delete(producerId);
+      return newMap;
+    })
+
+    setConsumers(prev=>{
+      const newConsumers = new Map(prev);
+      newConsumers.delete(producerId);
+      return newConsumers;
+    });
+
+    const element =document.getElementById(producerId);
+   element?.remove();
+  }
 
   useEffect(() => {
     if (isConnected) {
@@ -104,6 +141,11 @@ function Meeting() {
 
     }
   }, [isConnected])
+
+
+
+
+
 
   // -------------------get RTP Capabilities when connected to a room------------
   function getRTPCapabilityPromise() {
@@ -162,29 +204,40 @@ function Meeting() {
   async function getUserMedia(type: string) {
 
     let stream: MediaStream | null = null;
-    let mediaOptions:any;
+    let mediaOptions: any;
 
     try {
       if (type == 'audio') {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         const audio = stream.getAudioTracks()[0];
         setAudioTrack(audio);
-        mediaOptions={track:audio};
-  
+        mediaOptions = { track: audio };
+
       }
       else if (type == 'video') {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false, video: {
+            width: {
+              min: 640,
+              ideal: 1920
+            },
+            height: {
+              min: 400,
+              ideal: 1080
+            }
+          }
+        });
         const video = stream.getVideoTracks()[0];
         setvideoTrack(video);
-        mediaOptions={track:video,encodings:params.encodings};
-       
+        mediaOptions = { track: video, encodings: params.encodings, codecOptions: params.codecOptions };
+
       }
       else if (type == 'screen') {
         stream = await navigator.mediaDevices.getDisplayMedia();
         const screen = stream.getVideoTracks()[0];
         setscreenTrack(screen);
-        mediaOptions={track:screen};
-       
+        mediaOptions = { track: screen };
+
       }
       if (!stream) return;
 
@@ -205,8 +258,8 @@ function Meeting() {
         localScreenRef.current.play();
       }
 
-      createProducerTransport()
-        .then((transport:any) => {
+      createProducerTransport(type)
+        .then((transport: any) => {
           produceMedia(transport, type, mediaOptions);
         })
 
@@ -220,7 +273,7 @@ function Meeting() {
 
 
   //------------------------when device gets loaded create a producer transport----------
-  function createProducerTransport() {
+  function createProducerTransport(type: string) {
 
     return new Promise((resolve, reject) => {
 
@@ -264,7 +317,15 @@ function Meeting() {
                   rtpParameters: rtpParameters,
                   kind,
                   transportId: prodTransport.id
-                }, (({ producerId }: { producerId: any }) => { callback(producerId); console.log(producerId); }))
+                }, (({ producerId }: { producerId: any }) => {
+                  
+                  setProducerIdWithKind(prev=>{
+                    const newMap = new Map(prev);
+                    newMap.set(type,producerId);
+                    return newMap;
+                  });
+                  callback(producerId);
+                }))
               } catch (error: any) {
                 alert(error);
                 errback(error)
@@ -283,31 +344,45 @@ function Meeting() {
 
   }
 
+  useEffect(() => {
+    if (videoProducer) console.log(videoProducer.id);
+  }, [videoProducer])
+
+
 
   //---------------------when producer tranport is made call produce to connect to server-------------
-  async function produceMedia(transport: types.Transport, type: string, mediaOptions:any) {
-    const producer = await transport?.produce(mediaOptions);
-    // console.log(producer);
-    if (!producer) return;
+  async function produceMedia(transport: types.Transport, type: string, mediaOptions: types.AppData) {
 
 
-    type == "video" && setVideoProducer(producer);
-    type == "audio" && setAudioProducer(producer);
-    type == "screen" && setScreenProducer(producer);
+    let producer: types.Producer;
+    try {
+
+      
+      producer = await transport.produce(mediaOptions);
+      
+      
+      producer?.on('trackended', () => {
+        console.log("track ended");
+      })
+      
+      producer?.on('transportclose', () => {
+        console.log('transport ended')
+        
+        // close video track
+      })
+      if (!producer) return;
+      type == "video" && setVideoProducer(producer);
+      type == "audio" && setAudioProducer(producer);
+      type == "screen" && setScreenProducer(producer);
+
+      console.log("Producer made", producer.id);
 
 
+    } catch (error) {
+      console.log(error);
 
 
-
-    producer?.on('trackended', () => {
-      console.log("track ended");
-    })
-
-    producer?.on('transportclose', () => {
-      console.log('transport ended')
-
-      // close video track
-    })
+    }
   }
 
 
@@ -337,7 +412,17 @@ function Meeting() {
           iceCandidates: transportParams.iceCandidates,
           dtlsParameters: transportParams.dtlsParameters
         });
-        consumerTransports.set(consTransport?.id, consTransport);
+        if(!consTransport)return;
+        
+        setConsumerTransports(prev=>{
+          const newMap = new Map(prev);
+          newMap.set(producer, consTransport);
+          return newMap;
+        })
+
+        
+
+
         console.log("Consumer transport created:", consTransport);
         if (!consTransport) return;
 
@@ -390,18 +475,41 @@ function Meeting() {
 
             });
 
+            setConsumers(prev=>{
+              const newMap = new Map(prev);
+              newMap.set(producer, consumer);
+              return newMap;
+            });
+
+
             setProducerWithConsumer(c => [...c, consumer.producerId]);
 
 
+
             const { track } = consumer;
-            if (remoteVideoContainer.current) {
-              const newVideoElement = document.createElement('video');
-              newVideoElement.srcObject = new MediaStream([track]);
-              newVideoElement.style.height = '110px';
-              remoteVideoContainer.current.appendChild(newVideoElement);
-              newVideoElement.play();
+            
+          
+            
+
+            if (consumer.kind == 'video') {
+              if (remoteVideoContainer.current) {
+                const newVideoElement = document.createElement('video');
+                newVideoElement.id = consumer.producerId;
+                newVideoElement.srcObject = new MediaStream([track]);
+                newVideoElement.style.height = '110px';
+                remoteVideoContainer.current.appendChild(newVideoElement);
+                newVideoElement.play();
 
 
+              }
+            }
+            else if (consumer.kind == 'audio') {
+              const audioElement = document.createElement('audio');
+              audioElement.id = consumer.producerId;
+              audioElement.srcObject = new MediaStream([track]);
+              audioElement.autoplay = true;
+              audioElement.controls = false;
+              document.append(audioElement);
             }
           } catch (error) {
             console.error("Error consuming producer:", error);
@@ -430,13 +538,11 @@ function Meeting() {
 
   function stopProducing(type: string) {
 
+    socket?.emit('close-producer', { producerId: producerIdWithKind.get(type) })
 
     if (type == 'video' && videoTrack) {
       //emit to the socket to stop the prducing of the video
-
-
-
-      videoProducer?.close();
+      videoProducer!.close();
       //stopping the track
       videoTrack.stop();
       setvideoTrack(null);
@@ -453,7 +559,7 @@ function Meeting() {
 
 
     else if (type == 'screen' && screenTrack) {
-      screenProducer?.close();
+      screenProducer!.close();
       //stopping the track
       screenTrack.stop();
       setscreenTrack(null);
@@ -467,7 +573,7 @@ function Meeting() {
       element?.classList.add('hidden');
     }
     else if (type == 'audio' && audiotrack) {
-      audioproducer?.close();
+      audioproducer!.close();
       audiotrack.stop();
       setAudioTrack(null);
       //emit to stop audioproducer

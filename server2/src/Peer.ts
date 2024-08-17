@@ -64,11 +64,15 @@ export class Peer {
                 paused: false
             });
             this.producers.set(producer.id, producer);
+
+
             producer.on('transportclose', () => {
                 console.log("producer Transport closed ", this.name);
+                producer.close();
                 this.producers.delete(producer.id);
 
             })
+        
 
             return ({ success: true, message: "Producer created", producerId: producer.id });
 
@@ -78,6 +82,19 @@ export class Peer {
         }
 
 
+
+    }
+
+
+    closeProducer(producerId:string){
+        const producer:types.Producer = this.producers.get(producerId);
+
+        if(!producer)
+            return;
+        producer.close();
+
+        console.log("Producer Closed",producerId);
+        this.producers.delete(producerId);
 
     }
 
@@ -100,7 +117,16 @@ export class Peer {
 
             consumer.on('transportclose', () => {
                 console.log("Consumer transport closed", consumer.id);
+                consumer.close();
                 this.consumers.delete(consumer.id);
+            });
+
+
+            consumer.on('producerclose',()=>{
+                consumer.close();
+                this.consumers.delete(consumer.id);
+                console.log(this.consumers);
+                
             })
 
             return ({

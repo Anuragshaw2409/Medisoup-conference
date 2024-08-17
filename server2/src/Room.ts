@@ -76,6 +76,17 @@ export class Room {
 
         try {
             const transport = await this.router.createWebRtcTransport(this.webRtcTransport_options);
+
+            transport.on('dtlsstatechange',(dtlsState)=>{
+
+                if(dtlsState==='closed')
+                    transport.close();
+            });
+
+            transport.on('@close', () => {
+                console.log('Transport close', { name: this.peerList.get(socketId).name })
+              });
+          
             const success = this.peerList.get(socketId).addTransport(transport);
             if (success) {
                 return ({
@@ -130,6 +141,17 @@ export class Room {
 
     }
 
+    closeProducer(socketId:string, producerId:string){
+        this.peerList.get(socketId).closeProducer(producerId);
+        this.peerList.forEach((peer)=>{
+            if(peer.id != socketId){
+                this.io.to(peer.id).emit('close-consumer',{producerId});
+            }
+                
+        });
+
+    }
+
 
     getNameOfProducer(producerId:string){
         let foundName = "";
@@ -157,24 +179,6 @@ export class Room {
         });
 
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
     webRtcTransport_options = {
