@@ -84,7 +84,8 @@ export class Room {
             });
 
             transport.on('@close', () => {
-                console.log('Transport close', { name: this.peerList.get(socketId).name })
+                console.log('Transport close', { name: this.peerList.get(socketId).name });
+                this.peerList.get(socketId).transports.delete(transport.id);
               });
           
             const success = this.peerList.get(socketId).addTransport(transport);

@@ -27,6 +27,7 @@ function Meeting() {
   const [producerIdWithKind, setProducerIdWithKind] = useState<Map<string, string>>(new Map());
   const [consumers, setConsumers] = useState<Map<string, types.Consumer>>(new Map());
   const [consumerTransports, setConsumerTransports] = useState<Map<string, types.Transport>>(new Map());
+  const [producerTransports, setProducerTransports] = useState<Map<string, types.Transport>>(new Map());
   
   // const consumerTransports = new Map();
 
@@ -103,6 +104,10 @@ function Meeting() {
 
   socket?.on('close-consumer',({producerId})=>{
     console.log("Close consumer event fired");
+    setAllProducers((c)=>{
+      if(!c)return null;
+      return c.filter((id)=>id!==producerId)
+    })
     
     setProducerWithConsumer(c=>{
       return c.filter((id)=>id!=producerId);
@@ -130,8 +135,10 @@ function Meeting() {
       return newConsumers;
     });
 
-    const element =document.getElementById(producerId);
-   element?.remove();
+    const element = document.getElementById(producerId);
+    element?.remove();
+
+
   }
 
   useEffect(() => {
@@ -216,16 +223,7 @@ function Meeting() {
       }
       else if (type == 'video') {
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: false, video: {
-            width: {
-              min: 640,
-              ideal: 1920
-            },
-            height: {
-              min: 400,
-              ideal: 1080
-            }
-          }
+          audio: false, video: true
         });
         const video = stream.getVideoTracks()[0];
         setvideoTrack(video);
@@ -288,6 +286,13 @@ function Meeting() {
               iceCandidates: transportParams.iceCandidates,
               dtlsParameters: transportParams.dtlsParameters
             });
+
+            if(!prodTransport)return;
+              setProducerTransports(prev=>{
+                const newMap = new Map(prev);
+                newMap.set(type, prodTransport);
+                return newMap;
+              });
 
 
 
@@ -538,7 +543,15 @@ function Meeting() {
 
   function stopProducing(type: string) {
 
-    socket?.emit('close-producer', { producerId: producerIdWithKind.get(type) })
+    socket?.emit('close-producer', { producerId: producerIdWithKind.get(type) });
+
+    const producer = producerTransports.get(type);
+    producer?.close();
+    setProducerTransports(prev=>{
+      const newMap = new Map(prev);
+      newMap.delete(type);
+      return newMap;
+    });
 
     if (type == 'video' && videoTrack) {
       //emit to the socket to stop the prducing of the video
