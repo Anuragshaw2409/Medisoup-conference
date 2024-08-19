@@ -7,10 +7,10 @@ export class Room {
     worker: types.Worker;
     id: string;
     router!: types.Router
-    io:Server
+    io: Server
 
 
-    constructor(worker: types.Worker, id: string, io:Server) {
+    constructor(worker: types.Worker, id: string, io: Server) {
         this.id = id;
         this.worker = worker;
         this.io = io;
@@ -40,7 +40,7 @@ export class Room {
             });
     }
 
-    addPeer(socketId: string, name: string, isAdmin:boolean) {
+    addPeer(socketId: string, name: string, isAdmin: boolean) {
         try {
             const peer = new Peer(socketId, name, isAdmin);
             this.peerList.set(socketId, peer);
@@ -77,17 +77,17 @@ export class Room {
         try {
             const transport = await this.router.createWebRtcTransport(this.webRtcTransport_options);
 
-            transport.on('dtlsstatechange',(dtlsState)=>{
+            transport.on('dtlsstatechange', (dtlsState) => {
 
-                if(dtlsState==='closed')
+                if (dtlsState === 'closed')
                     transport.close();
             });
 
             transport.on('@close', () => {
                 console.log('Transport close', { name: this.peerList.get(socketId).name });
                 this.peerList.get(socketId).transports.delete(transport.id);
-              });
-          
+            });
+
             const success = this.peerList.get(socketId).addTransport(transport);
             if (success) {
                 return ({
@@ -120,87 +120,88 @@ export class Room {
     async produce(transportId: string, rtpParameters: types.RtpParameters, kind: types.MediaKind, socketId: string) {
 
         const response = await this.peerList.get(socketId).produce(transportId, rtpParameters, kind);
-        if(response.success){
-        this.broadcast(socketId, response.producerId)}
+        if (response.success) {
+            this.broadcast(socketId, response.producerId)
+        }
         return response;
 
     }
 
 
-    async consume(transportId:string, rtpCapabilities:types.RtpCapabilities,producerId:string, socketId:string){
+    async consume(transportId: string, rtpCapabilities: types.RtpCapabilities, producerId: string, socketId: string) {
 
-        if(!this.router.canConsume({producerId:producerId, rtpCapabilities:rtpCapabilities,}))
-            return ({success:false, message:"Cannot consume Producer"});
+        if (!this.router.canConsume({ producerId: producerId, rtpCapabilities: rtpCapabilities, }))
+            return ({ success: false, message: "Cannot consume Producer" });
 
         const name = this.getNameOfProducer(producerId);
         console.log(this.peerList.keys());
-        
-        let response = await this.peerList.get(socketId).consume(transportId, rtpCapabilities, producerId, name);        
+
+        let response = await this.peerList.get(socketId).consume(transportId, rtpCapabilities, producerId, name);
 
         return response;
 
 
     }
 
-    closeProducer(socketId:string, producerId:string){
+    closeProducer(socketId: string, producerId: string) {
         this.peerList.get(socketId).closeProducer(producerId);
-        this.peerList.forEach((peer)=>{
-            if(peer.id != socketId){
-                this.io.to(peer.id).emit('close-consumer',{producerId});
+        this.peerList.forEach((peer) => {
+            if (peer.id != socketId) {
+                this.io.to(peer.id).emit('close-consumer', { producerId });
             }
-                
+
         });
 
     }
 
 
-    getNameOfProducer(producerId:string){
+    getNameOfProducer(producerId: string) {
         let foundName = "";
 
-        this.peerList.forEach((peer)=>{
+        this.peerList.forEach((peer) => {
             const name = peer.isproducerAvailable(producerId);
-            
-            if(name!= undefined){
+
+            if (name != undefined) {
                 foundName = name;
                 return;
-            } 
+            }
         })
         return foundName;
 
 
     }
 
-    broadcast(socketId:string, producerId:string){
+    broadcast(socketId: string, producerId: string) {
         this.peerList.forEach((peer) => {
-            if(peer.id != socketId){
+            if (peer.id != socketId) {
                 console.log("Emited once");
-                
-                this.io.to(peer.id).emit('new-producer',{producerId});
+
+                this.io.to(peer.id).emit('new-producer', { producerId });
             }
         });
 
     }
 
 
-    leave(socketId:string){
-        this.peerList.forEach((peer) => {
-            const producers = peer.producers;
-            producers.forEach((producer:types.Producer)=>{
-                this.closeProducer(socketId, producer.id);
-            });
+    leave(socketId: string) {
+        const peer = this.peerList.get(socketId);
+        if (!peer)
+            return;
 
+        const producers = peer.producers;
+        producers.forEach((producer: types.Producer) => {
+            this.closeProducer(socketId, producer.id);
         });
 
-        this.peerList.forEach((peer)=>{
-            const transports = peer.transports;
-            transports.forEach((transport:types.Transport)=>{
-                transport.close();
-            });
+        const transports = peer.transports;
+        transports.forEach((transport: types.Transport) => {
+            transport.close();
         });
+
 
         this.peerList.set(socketId, null);
         this.peerList.delete(socketId);
-        
+
 
     }
 
