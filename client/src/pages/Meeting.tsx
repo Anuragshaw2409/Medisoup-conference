@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { io, Socket } from "socket.io-client";
 import { types, Device } from "mediasoup-client";
 import { params } from "./config";
+import annyang from 'annyang'
 
 
 
@@ -41,6 +42,10 @@ function Meeting() {
   const [audiotrack, setAudioTrack] = useState<MediaStreamTrack | null>(null);
   const [videoTrack, setvideoTrack] = useState<MediaStreamTrack | null>(null);
   const [screenTrack, setscreenTrack] = useState<MediaStreamTrack | null>(null);
+
+  const [isMicActive, setIsMicActive] = useState(false);
+  const [captions, setCaptions] = useState<{ name: string, caption: string }[]>([]);
+  const [lastClientId, setClientId] = useState<string | null>(null);
 
 
 
@@ -82,53 +87,171 @@ function Meeting() {
   }, [])
   // ---------------------------connected to a room-------------------
 
+  useEffect(() => {
 
-  socket?.on('new-producer', ({ producerId }) => {
-    if (!producerId) return;
+    socket?.on('new-producer', ({ producerId }) => {
+      if (!producerId) return;
 
-    console.log("new producer", producerId);
+      console.log("new producer", producerId);
 
 
-    if (allProducers?.includes(producerId)) return;
+      if (allProducers?.includes(producerId)) return;
 
-    else {
-      if (allProducers)
-        setAllProducers([...allProducers, producerId]);
-      else
-        setAllProducers([producerId]);
+      else {
+        if (allProducers)
+          setAllProducers([...allProducers, producerId]);
+        else
+          setAllProducers([producerId]);
 
-    }
+      }
 
-  });
-
-  socket?.on('close-consumer',({producerId})=>{
-    console.log("Close consumer event fired");
-    setAllProducers((c)=>{
-      if(!c)return null;
-      return c.filter((id)=>id!==producerId)
-    })
-    
-    setProducerWithConsumer(c=>{
-      return c.filter((id)=>id!=producerId);
     });
 
-    removeElements(producerId);
+    socket?.on('close-consumer', ({ producerId }) => {
+      console.log("Close consumer event fired");
+      setAllProducers((c) => {
+        if (!c) return null;
+        return c.filter((id) => id !== producerId)
+      })
 
-  })
+      setProducerWithConsumer(c => {
+        return c.filter((id) => id != producerId);
+      });
 
-  function removeElements(producerId:string){
+      removeElements(producerId);
+
+    });
+    return () => {
+      socket?.off('new-producer');
+      socket?.off('close-consumer');
+    }
+
+  }, [socket])
+
+
+  useEffect(() => {
+    socket?.on('captionRecieved', async ({ name, caption, clientId }: { name: string, caption: string, clientId: string }) => {
+    
+      appendCaption(name, caption, clientId);
+
+    });
+    return () => {
+      socket?.off('captionRecieved');
+    }
+  }, [socket])
+
+
+
+  function appendCaption(name: string, caption: string, clientId: string) {
+
+    console.log("name: ", name, " caption: ", caption, "id: ", clientId);
+
+    setClientId((prevClient)=>{
+      if(prevClient == clientId){
+        console.log("Clients matched", prevClient);
+        
+        setCaptions((prev) => {
+          prev[prev.length - 1].caption += caption+'\n';
+          return [...prev];
+        });
+
+        return prevClient;
+
+      }
+
+      else{
+        console.log("Clients not mathched", prevClient);
+        
+        setCaptions((prev) => {
+          return [...prev, { name, caption }];
+        });
+        return clientId;
+      }
+    });
+
+  }
+
+  useEffect(() => {
+    if (!isMicActive) { annyang.abort(); return; }
+    if (annyang) {
+      annyang.removeCallback('result');
+      const commands = {
+        '*text': () => { }, // Dummy command, real work is in onresult below
+      };
+
+      annyang.addCommands(commands);
+
+      // Start listening
+      annyang.start({ autoRestart: true, continuous: true });
+
+      // Listen for results and determine when a sentence has finished
+      annyang.addCallback('result', (results) => {
+        // Get the most confident result
+        if (results) {
+          const speechToText = results[0];
+          socket?.emit('caption-message', { caption: speechToText })
+        }
+      });
+
+    }
+    return () => {
+      annyang.removeCallback('result');
+      annyang.abort();
+    }
+  }, [isMicActive])
+
+  useEffect(() => {
+    const captionBox = document.getElementById('captionBox');
+    if (captionBox?.classList.contains('hidden')) return;
+    const scrollHeight: number = captionBox!.scrollHeight;
+    captionBox?.scroll({ top: scrollHeight, behavior: 'smooth' });
+  }, [captions])
+
+
+
+
+  function toggleCaption() {
+    const captionButton = document.getElementById('ccButton');
+    const captionBox = document.getElementById('captionBox');
+
+    if (captionButton?.textContent == "CC") {
+      //turn on CC
+      socket?.emit('enable-cc');
+      //enable caption box
+      captionBox?.classList.remove('hidden');
+      captionBox?.classList.add('inline-block');
+
+
+      captionButton.textContent = "Off-CC";
+    }
+    else if (captionButton?.textContent == "Off-CC") {
+      //turn off CC
+      socket?.emit('disable-cc');
+
+      //disable caption box
+      captionBox?.classList.remove('inline-block');
+      captionBox?.classList.add('hidden');
+
+      captionButton.textContent = "CC";
+    }
+
+
+  }
+
+
+  function removeElements(producerId: string) {
     const consumer = consumers.get(producerId);
     const consumerTrans = consumerTransports.get(producerId);
     consumerTrans?.close();
     consumer?.close();
 
-    setConsumerTransports(prev=>{
+    setConsumerTransports(prev => {
       const newMap = new Map(prev);
       newMap.delete(producerId);
       return newMap;
     })
 
-    setConsumers(prev=>{
+    setConsumers(prev => {
       const newConsumers = new Map(prev);
       newConsumers.delete(producerId);
       return newConsumers;
@@ -286,12 +409,12 @@ function Meeting() {
               dtlsParameters: transportParams.dtlsParameters
             });
 
-            if(!prodTransport)return;
-              setProducerTransports(prev=>{
-                const newMap = new Map(prev);
-                newMap.set(type, prodTransport);
-                return newMap;
-              });
+            if (!prodTransport) return;
+            setProducerTransports(prev => {
+              const newMap = new Map(prev);
+              newMap.set(type, prodTransport);
+              return newMap;
+            });
 
 
 
@@ -322,10 +445,10 @@ function Meeting() {
                   kind,
                   transportId: prodTransport.id
                 }, (({ producerId }: { producerId: any }) => {
-                  
-                  setProducerIdWithKind(prev=>{
+
+                  setProducerIdWithKind(prev => {
                     const newMap = new Map(prev);
-                    newMap.set(type,producerId);
+                    newMap.set(type, producerId);
                     return newMap;
                   });
                   callback(producerId);
@@ -361,17 +484,17 @@ function Meeting() {
     let producer: types.Producer;
     try {
 
-      
+
       producer = await transport.produce(mediaOptions);
-      
-      
+
+
       producer?.on('trackended', () => {
         console.log("track ended");
       })
-      
+
       producer?.on('transportclose', () => {
         console.log('transport ended')
-        
+
         // close video track
       })
       if (!producer) return;
@@ -416,15 +539,15 @@ function Meeting() {
           iceCandidates: transportParams.iceCandidates,
           dtlsParameters: transportParams.dtlsParameters
         });
-        if(!consTransport)return;
-        
-        setConsumerTransports(prev=>{
+        if (!consTransport) return;
+
+        setConsumerTransports(prev => {
           const newMap = new Map(prev);
           newMap.set(producer, consTransport);
           return newMap;
         })
 
-        
+
 
 
         console.log("Consumer transport created:", consTransport);
@@ -479,7 +602,7 @@ function Meeting() {
 
             });
 
-            setConsumers(prev=>{
+            setConsumers(prev => {
               const newMap = new Map(prev);
               newMap.set(producer, consumer);
               return newMap;
@@ -491,9 +614,9 @@ function Meeting() {
 
 
             const { track } = consumer;
-            
-          
-            
+
+
+
 
             if (consumer.kind == 'video') {
               if (remoteVideoContainer.current) {
@@ -513,7 +636,8 @@ function Meeting() {
               audioElement.srcObject = new MediaStream([track]);
               audioElement.autoplay = true;
               audioElement.controls = false;
-              document.append(audioElement);
+              audioElement.play();
+              // document.append(audioElement);
             }
           } catch (error) {
             console.error("Error consuming producer:", error);
@@ -538,15 +662,13 @@ function Meeting() {
   }
 
 
-
-
   function stopProducing(type: string) {
 
     socket?.emit('close-producer', { producerId: producerIdWithKind.get(type) });
 
     const producer = producerTransports.get(type);
     producer?.close();
-    setProducerTransports(prev=>{
+    setProducerTransports(prev => {
       const newMap = new Map(prev);
       newMap.delete(type);
       return newMap;
@@ -632,10 +754,12 @@ function Meeting() {
       if (value == 'Unmute' && !audiotrack) {
         audioRef.current.innerText = 'Mute';
         getUserMedia('audio');
+        setIsMicActive(true);
       }
       else {
         audioRef.current.innerText = 'Unmute';
         stopProducing('audio');
+        setIsMicActive(false);
       }
 
     }
@@ -643,7 +767,7 @@ function Meeting() {
   }
 
 
-  function leaveCall(){
+  function leaveCall() {
     socket?.emit('leave');
     setRoomId("");
     setDevice(null);
@@ -655,12 +779,12 @@ function Meeting() {
     screenProducer?.close();
     setScreenProducer(null);
     setProducerIdWithKind(new Map());
-    consumerTransports.forEach((transport)=>{
+    consumerTransports.forEach((transport) => {
       transport.close();
     });
     setConsumerTransports(new Map());
     setConsumers(new Map());
-    producerTransports.forEach((transport)=>{
+    producerTransports.forEach((transport) => {
       transport.close();
     })
     setProducerTransports(new Map());
@@ -670,7 +794,7 @@ function Meeting() {
     setscreenTrack(null);
 
     navigate('/');
-    
+
   }
 
 
@@ -704,6 +828,17 @@ function Meeting() {
 
       </div>
 
+      <div className="captionBox absolute bottom-28 left-[50%] -translate-x-[50%] w-96 h-52 bg-transparent  overflow-y-scroll hidden" id="captionBox">
+
+        {captions.map((caption, index) => {
+          return (
+            <Caption name={caption.name} message={caption.caption} key={index} />
+          )
+        })}
+
+
+      </div>
+
       <div className="footer w-full border-t-[0.5px] border-slate-700 py-2 flex justify-center gap-x-3">
         <button className="py-2 px-4 border-2 border-red-500 text-red-500 rounded-lg" onClick={handleAudioButton} ref={audioRef}>
           Unmute
@@ -715,10 +850,31 @@ function Meeting() {
         <button className="py-2 px-4 border-2 border-red-500 text-red-500 rounded-lg" onClick={leaveCall}>
           End Call
         </button>
+        <button className="py-2 px-4 border-2 border-red-500 text-red-500 rounded-lg" onClick={toggleCaption} id='ccButton'>
+          CC
+        </button>
         <button className="py-2 px-4 border-2 border-red-500 text-red-500 rounded-lg" onClick={handleScreenButton} ref={screenref}>
           Present screen
         </button>
       </div>
+
+
+      <template id="captionTemplate" className="hidden">
+        <div className="w-full h-auto flex gap-x-1 p-1">
+
+          <div className="w-10 h-10 text-lg rounded-full bg-lime-800 flex justify-center items-center flex-shrink-0">
+            <div id="avatar"></div>
+          </div>
+
+          <div className="textbox flex flex-col ">
+            <div className=" h-auto text-base" id="nameField">
+            </div>
+            <div className=" h-auto text-sm text-slate-400 pt-1" id="captionField">
+            </div>
+          </div>
+        </div>
+
+      </template>
     </div>
   );
 }
@@ -735,4 +891,28 @@ function VideoBox({ forwardedRef, name }: { forwardedRef: React.RefObject<HTMLVi
       <h2 className="absolute bottom-0 pl-3 group-hover:bg-gradient-to-b from-transparent to-slate-700 w-full">{name}</h2>
     </div>
   );
+}
+
+
+function Caption({ name, message }: { name: string, message: string }) {
+
+  return (
+    <div className="w-full h-auto flex gap-x-1 p-1">
+
+      <div className="w-10 h-10 text-lg rounded-full bg-lime-800 flex justify-center items-center flex-shrink-0">
+        <div>{name.charAt(0).toUpperCase()}</div>
+      </div>
+
+      <div className="textbox flex flex-col ">
+        <div className=" h-auto text-base">
+          {name}
+        </div>
+        <div className=" h-auto text-sm text-slate-400 pt-1">
+          {message}
+
+        </div>
+      </div>
+    </div>
+  )
+
 }

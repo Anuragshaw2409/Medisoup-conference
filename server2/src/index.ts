@@ -194,6 +194,29 @@ io.on('connection',(socket: CustomSocket)=>{
 
     })
 
+    socket.on('enable-cc',()=>{
+        if(!socket.roomId || !roomList.has(socket.roomId)){
+            return;
+        }
+
+        roomList.get(socket.roomId).enableCC(socket.id);
+    })
+    socket.on('disable-cc',()=>{
+        if(!socket.roomId || !roomList.has(socket.roomId)){
+            return;
+        }
+
+        roomList.get(socket.roomId).disableCC(socket.id);
+    })
+
+    socket.on('caption-message',({caption})=>{
+        if(!socket.roomId || !roomList.has(socket.roomId)){
+            return;
+        }      
+
+        roomList.get(socket.roomId).sendCaption(socket.id, caption);
+    })
+
 
     socket.on('leave',()=>{
         if(!socket.roomId || !roomList.has(socket.roomId)){
@@ -204,9 +227,6 @@ io.on('connection',(socket: CustomSocket)=>{
 
 
     })
-
-
-
 
 
 })

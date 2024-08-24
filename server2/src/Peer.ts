@@ -7,6 +7,7 @@ export class Peer {
     transports = new Map();
     producers = new Map();
     consumers = new Map();
+    isClosedCaptionEnabled = false;
 
     constructor(id: string, name: string, isAdmin: boolean) {
         this.id = id;

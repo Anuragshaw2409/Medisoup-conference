@@ -182,6 +182,36 @@ export class Room {
 
     }
 
+    enableCC(socketId:string){
+        const peer = this.peerList.get(socketId);
+        
+        peer.enableCC = true;
+    }
+    
+    disableCC(socketId:string){
+        const peer = this.peerList.get(socketId);
+        peer.enableCC = false;
+
+    }
+
+    sendCaption(socketId:string, caption:string){
+        this.peerList.forEach((peer) => {
+            let peerName="";
+            if (peer.enableCC) {
+                if(peer.id ==socketId){
+                    peerName = peer.name+"(you)";
+                }
+                this.io.to(peer.id).emit("captionRecieved", {
+                    name: peerName || this.peerList.get(socketId).name,
+                    caption: caption,
+                    clientId:socketId
+                });
+                
+            }
+        });
+
+    }
+
 
     leave(socketId: string) {
         const peer = this.peerList.get(socketId);
