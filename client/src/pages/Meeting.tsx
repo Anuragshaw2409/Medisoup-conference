@@ -4,6 +4,7 @@ import { io, Socket } from "socket.io-client";
 import { types, Device } from "mediasoup-client";
 import { params } from "./config";
 import annyang from 'annyang'
+import axios from 'axios';
 
 
 
@@ -15,6 +16,7 @@ function Meeting() {
   const [socket, setSocket] = useState<Socket>();
   const [device, setDevice] = useState<types.Device | null>(null);
   const [allProducers, setAllProducers] = useState<string[] | null>(null);
+  const [ccLanguage123, setccLanguage123] = useState<string>("");
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const localScreenRef = useRef<HTMLVideoElement | null>(null);
@@ -46,6 +48,7 @@ function Meeting() {
   const [isMicActive, setIsMicActive] = useState(false);
   const [captions, setCaptions] = useState<{ name: string, caption: string }[]>([]);
   const [lastClientId, setClientId] = useState<string | null>(null);
+  
 
 
 
@@ -131,27 +134,47 @@ function Meeting() {
 
   useEffect(() => {
     socket?.on('captionRecieved', async ({ name, caption, clientId }: { name: string, caption: string, clientId: string }) => {
-    
       appendCaption(name, caption, clientId);
-
     });
     return () => {
       socket?.off('captionRecieved');
     }
   }, [socket])
 
+  
+    async function translateCaption(caption:string, language:string){
+  
+      console.log("Language value in translate: ",ccLanguage123);
+      
+      if(language=="")
+        return caption;
+      
+  
+      const apiKey = "AIzaSyBqlTx1uZnIaeFLd2nj_I52RL3ygzfg718"
+      console.log("Inside translate");
+      
+      
+      const response = await axios.post(`https://translation.googleapis.com/language/translate/v2?q=${caption}&target=${language}&format=text&model=base&key=${apiKey}`);
+  
+      return response.data.data.translations[0].translatedText;
+    }
 
 
-  function appendCaption(name: string, caption: string, clientId: string) {
+  async function appendCaption(name: string, preCaption: string, clientId: string) {
 
-    console.log("name: ", name, " caption: ", caption, "id: ", clientId);
+    const element = document.getElementById('languageValue');
+    if(!element) return;
+    const language = element?.innerText;
 
-    setClientId((prevClient)=>{
-      if(prevClient == clientId){
-        console.log("Clients matched", prevClient);
+    let caption = await translateCaption(preCaption, language)
+    
+      // console.log("name: ", name, " caption: ", caption, "id: ", clientId);
+       setClientId((prevClient) => {
+      if (prevClient == clientId) {
         
+
         setCaptions((prev) => {
-          prev[prev.length - 1].caption += caption+'\n';
+          prev[prev.length - 1].caption += caption + '\n';
           return [...prev];
         });
 
@@ -159,9 +182,9 @@ function Meeting() {
 
       }
 
-      else{
+      else {
         console.log("Clients not mathched", prevClient);
-        
+
         setCaptions((prev) => {
           return [...prev, { name, caption }];
         });
@@ -170,6 +193,11 @@ function Meeting() {
     });
 
   }
+  useEffect(() => {
+    console.log("Updated state value:", ccLanguage123); // This prints the updated state value
+  }, [ccLanguage123]); 
+
+
 
   useEffect(() => {
     if (!isMicActive) { annyang.abort(); return; }
@@ -798,12 +826,6 @@ function Meeting() {
   }
 
 
-
-
-
-
-
-
   return (
     <div className="relative w-full h-screen flex flex-col">
 
@@ -853,28 +875,157 @@ function Meeting() {
         <button className="py-2 px-4 border-2 border-red-500 text-red-500 rounded-lg" onClick={toggleCaption} id='ccButton'>
           CC
         </button>
+        <select className="py-2 px-4 border-2 border-red-500 text-red-500 rounded-lg bg-black" name="language" id="languageDD" onChange={
+          (e) => {
+            const selectedLanguage = e.target.value;
+            setccLanguage123(selectedLanguage);
+             console.log(e.target.value);
+        }}>
+          <option value="" defaultChecked>Translation off</option>
+          <option value="af" >Afrikaans</option>
+          <option value="sq">Albanian</option>
+          <option value="am">Amharic</option>
+          <option value="ar">Arabic</option>
+          <option value="hy">Armenian</option>
+          <option value="as">Assamese</option>
+          <option value="ay">Aymara</option>
+          <option value="az">Azerbaijani</option>
+          <option value="bm">Bambara</option>
+          <option value="eu">Basque</option>
+          <option value="be">Belarusian</option>
+          <option value="bn">Bengali</option>
+          <option value="bho">Bhojpuri</option>
+          <option value="bs">Bosnian</option>
+          <option value="bg">Bulgarian</option>
+          <option value="ca">Catalan</option>
+          <option value="ceb">Cebuano</option>
+          <option value="zh-CN">Chinese (Simplified)</option>
+          <option value="zh-TW">Chinese (Traditional)</option>
+          <option value="co">Corsican</option>
+          <option value="hr">Croatian</option>
+          <option value="cs">Czech</option>
+          <option value="da">Danish</option>
+          <option value="dv">Dhivehi</option>
+          <option value="doi">Dogri</option>
+          <option value="nl">Dutch</option>
+          <option value="en">English</option>
+          <option value="eo">Esperanto</option>
+          <option value="et">Estonian</option>
+          <option value="ee">Ewe</option>
+          <option value="fil">Filipino (Tagalog)</option>
+          <option value="fi">Finnish</option>
+          <option value="fr">French</option>
+          <option value="fy">Frisian</option>
+          <option value="gl">Galician</option>
+          <option value="ka">Georgian</option>
+          <option value="de">German</option>
+          <option value="el">Greek</option>
+          <option value="gn">Guarani</option>
+          <option value="gu">Gujarati</option>
+          <option value="ht">Haitian Creole</option>
+          <option value="ha">Hausa</option>
+          <option value="haw">Hawaiian</option>
+          <option value="he">Hebrew</option>
+          <option value="hi">Hindi</option>
+          <option value="hmn">Hmong</option>
+          <option value="hu">Hungarian</option>
+          <option value="is">Icelandic</option>
+          <option value="ig">Igbo</option>
+          <option value="ilo">Ilocano</option>
+          <option value="id">Indonesian</option>
+          <option value="ga">Irish</option>
+          <option value="it">Italian</option>
+          <option value="ja">Japanese</option>
+          <option value="jv">Javanese</option>
+          <option value="kn">Kannada</option>
+          <option value="kk">Kazakh</option>
+          <option value="km">Khmer</option>
+          <option value="rw">Kinyarwanda</option>
+          <option value="gom">Konkani</option>
+          <option value="ko">Korean</option>
+          <option value="kri">Krio</option>
+          <option value="ku">Kurdish</option>
+          <option value="ckb">Kurdish (Sorani)</option>
+          <option value="ky">Kyrgyz</option>
+          <option value="lo">Lao</option>
+          <option value="la">Latin</option>
+          <option value="lv">Latvian</option>
+          <option value="ln">Lingala</option>
+          <option value="lt">Lithuanian</option>
+          <option value="lg">Luganda</option>
+          <option value="lb">Luxembourgish</option>
+          <option value="mk">Macedonian</option>
+          <option value="mai">Maithili</option>
+          <option value="mg">Malagasy</option>
+          <option value="ms">Malay</option>
+          <option value="ml">Malayalam</option>
+          <option value="mt">Maltese</option>
+          <option value="mi">Maori</option>
+          <option value="mr">Marathi</option>
+          <option value="mni-Mtei">Meiteilon (Manipuri)</option>
+          <option value="lus">Mizo</option>
+          <option value="mn">Mongolian</option>
+          <option value="my">Myanmar (Burmese)</option>
+          <option value="ne">Nepali</option>
+          <option value="no">Norwegian</option>
+          <option value="ny">Nyanja (Chichewa)</option>
+          <option value="or">Odia (Oriya)</option>
+          <option value="om">Oromo</option>
+          <option value="ps">Pashto</option>
+          <option value="fa">Persian</option>
+          <option value="pl">Polish</option>
+          <option value="pt">Portuguese (Portugal, Brazil)</option>
+          <option value="pa">Punjabi</option>
+          <option value="qu">Quechua</option>
+          <option value="ro">Romanian</option>
+          <option value="ru">Russian</option>
+          <option value="sm">Samoan</option>
+          <option value="sa">Sanskrit</option>
+          <option value="gd">Scots Gaelic</option>
+          <option value="nso">Sepedi</option>
+          <option value="sr">Serbian</option>
+          <option value="st">Sesotho</option>
+          <option value="sn">Shona</option>
+          <option value="sd">Sindhi</option>
+          <option value="si">Sinhala (Sinhalese)</option>
+          <option value="sk">Slovak</option>
+          <option value="sl">Slovenian</option>
+          <option value="so">Somali</option>
+          <option value="es">Spanish</option>
+          <option value="su">Sundanese</option>
+          <option value="sw">Swahili</option>
+          <option value="sv">Swedish</option>
+          <option value="tl">Tagalog (Filipino)</option>
+          <option value="tg">Tajik</option>
+          <option value="ta">Tamil</option>
+          <option value="tt">Tatar</option>
+          <option value="te">Telugu</option>
+          <option value="th">Thai</option>
+          <option value="ti">Tigrinya</option>
+          <option value="ts">Tsonga</option>
+          <option value="tr">Turkish</option>
+          <option value="tk">Turkmen</option>
+          <option value="ak">Twi (Akan)</option>
+          <option value="uk">Ukrainian</option>
+          <option value="ur">Urdu</option>
+          <option value="ug">Uyghur</option>
+          <option value="uz">Uzbek</option>
+          <option value="vi">Vietnamese</option>
+          <option value="cy">Welsh</option>
+          <option value="xh">Xhosa</option>
+          <option value="yi">Yiddish</option>
+          <option value="yo">Yoruba</option>
+          <option value="zu">Zulu</option>
+
+        </select>
         <button className="py-2 px-4 border-2 border-red-500 text-red-500 rounded-lg" onClick={handleScreenButton} ref={screenref}>
           Present screen
         </button>
+        <p id="languageValue" className="hidden">{ccLanguage123}</p>
       </div>
 
 
-      <template id="captionTemplate" className="hidden">
-        <div className="w-full h-auto flex gap-x-1 p-1">
 
-          <div className="w-10 h-10 text-lg rounded-full bg-lime-800 flex justify-center items-center flex-shrink-0">
-            <div id="avatar"></div>
-          </div>
-
-          <div className="textbox flex flex-col ">
-            <div className=" h-auto text-base" id="nameField">
-            </div>
-            <div className=" h-auto text-sm text-slate-400 pt-1" id="captionField">
-            </div>
-          </div>
-        </div>
-
-      </template>
     </div>
   );
 }
