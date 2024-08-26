@@ -150,7 +150,7 @@ function Meeting() {
         return caption;
       
   
-      const apiKey = "AIzaSyBqlTx1uZnIaeFLd2nj_I52RL3ygzfg718"
+      const apiKey = import.meta.env.VITE_GOOGLE_API;
       console.log("Inside translate");
       
       
