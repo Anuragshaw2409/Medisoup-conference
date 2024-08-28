@@ -3,8 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { io, Socket } from "socket.io-client";
 import { types, Device } from "mediasoup-client";
 import { params } from "./config";
-import annyang from 'annyang'
 import axios from 'axios';
+import useSpeechToText from "../hooks/useSpeechToText"
 
 
 
@@ -16,7 +16,8 @@ function Meeting() {
   const [socket, setSocket] = useState<Socket>();
   const [device, setDevice] = useState<types.Device | null>(null);
   const [allProducers, setAllProducers] = useState<string[] | null>(null);
-  const [ccLanguage123, setccLanguage123] = useState<string>("");
+  // const [ccLanguage123, setccLanguage123] = useState<string>("");
+  const ccLanguage123 = useRef<string>("");
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const localScreenRef = useRef<HTMLVideoElement | null>(null);
@@ -47,6 +48,7 @@ function Meeting() {
 
   const [isMicActive, setIsMicActive] = useState(false);
   const [captions, setCaptions] = useState<{ name: string, caption: string }[]>([]);
+  // @ts-ignore
   const [lastClientId, setClientId] = useState<string | null>(null);
   
 
@@ -134,6 +136,8 @@ function Meeting() {
 
   useEffect(() => {
     socket?.on('captionRecieved', async ({ name, caption, clientId }: { name: string, caption: string, clientId: string }) => {
+      console.log("Caption Received: ",caption);
+      
       appendCaption(name, caption, clientId);
     });
     return () => {
@@ -142,9 +146,10 @@ function Meeting() {
   }, [socket])
 
   
-    async function translateCaption(caption:string, language:string){
+    async function translateCaption(caption:string){
   
-      console.log("Language value in translate: ",ccLanguage123);
+      const language = ccLanguage123.current;
+      console.log("Language value in translate: ",language);
       
       if(language=="")
         return caption;
@@ -162,11 +167,8 @@ function Meeting() {
 
   async function appendCaption(name: string, preCaption: string, clientId: string) {
 
-    const element = document.getElementById('languageValue');
-    if(!element) return;
-    const language = element?.innerText;
 
-    let caption = await translateCaption(preCaption, language)
+    let caption = await translateCaption(preCaption)
     
       // console.log("name: ", name, " caption: ", caption, "id: ", clientId);
        setClientId((prevClient) => {
@@ -193,40 +195,83 @@ function Meeting() {
     });
 
   }
-  useEffect(() => {
-    console.log("Updated state value:", ccLanguage123); // This prints the updated state value
-  }, [ccLanguage123]); 
 
 
 
-  useEffect(() => {
-    if (!isMicActive) { annyang.abort(); return; }
-    if (annyang) {
-      annyang.removeCallback('result');
-      const commands = {
-        '*text': () => { }, // Dummy command, real work is in onresult below
-      };
+  // useEffect(() => {
+  //   if (!isMicActive) { annyang.abort(); return; }
+  //   if (annyang) {
+  //     annyang.removeCallback('result');
+  //     const commands = {
+  //       '*text': () => { }, // Dummy command, real work is in onresult below
+  //     };
 
-      annyang.addCommands(commands);
+  //     annyang.addCommands(commands);
 
-      // Start listening
-      annyang.start({ autoRestart: true, continuous: true });
+  //     // Start listening
+  //     annyang.start({ autoRestart: true, continuous: true });
 
-      // Listen for results and determine when a sentence has finished
-      annyang.addCallback('result', (results) => {
-        // Get the most confident result
-        if (results) {
-          const speechToText = results[0];
-          socket?.emit('caption-message', { caption: speechToText })
-        }
-      });
+  //     // Listen for results and determine when a sentence has finished
+  //     annyang.addCallback('result', (results) => {
+  //       // Get the most confident result
+  //       if (results) {
+  //         const speechToText = results[0];
+  //         socket?.emit('caption-message', { caption: speechToText })
+  //       }
+  //     });
 
+  //   }
+  //   return () => {
+  //     annyang.removeCallback('result');
+  //     annyang.abort();
+  //   }
+  // }, [isMicActive])
+
+// ---------------------------------------------------------------------------------------------------------
+const [text, setText] = useState("");
+const options = {
+    interimResults: true,
+    // lang : "en-US",
+    continuous:true
+}
+const {transcript, starListening, stopListening} = useSpeechToText(options);
+
+
+useEffect(()=>{
+    const interval = setInterval(()=>{
+        setText(transcript);
+    },1000);
+    return()=>{
+        clearInterval(interval);
     }
-    return () => {
-      annyang.removeCallback('result');
-      annyang.abort();
-    }
-  }, [isMicActive])
+
+},[transcript])
+
+
+//toggling speech to text on/off
+useEffect(()=>{
+  console.log("isMic Active", isMicActive);
+  if(isMicActive)
+    starListening();
+  else if(!isMicActive)
+    stopListening();
+
+},[isMicActive])
+
+//send the caption once text state is updated
+useEffect(()=>{
+  if(text =="")
+    return;
+  socket?.emit('caption-message', { caption: text })
+},[text])
+
+
+
+// -------------------------------------------------------------------------------------------------------==
+
+
+
+
 
   useEffect(() => {
     const captionBox = document.getElementById('captionBox');
@@ -877,8 +922,7 @@ function Meeting() {
         </button>
         <select className="py-2 px-4 border-2 border-red-500 text-red-500 rounded-lg bg-black" name="language" id="languageDD" onChange={
           (e) => {
-            const selectedLanguage = e.target.value;
-            setccLanguage123(selectedLanguage);
+            ccLanguage123.current = e.target.value;
              console.log(e.target.value);
         }}>
           <option value="" defaultChecked>Translation off</option>
@@ -1021,7 +1065,7 @@ function Meeting() {
         <button className="py-2 px-4 border-2 border-red-500 text-red-500 rounded-lg" onClick={handleScreenButton} ref={screenref}>
           Present screen
         </button>
-        <p id="languageValue" className="hidden">{ccLanguage123}</p>
+
       </div>
 
 
